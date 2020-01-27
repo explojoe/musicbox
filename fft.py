@@ -21,12 +21,6 @@ def freq_to_key(freq):
 def key_to_freq(key):
     return 2**((key-49)/12)*440
 
-
-
-def test_func(x, a, b):
-    #return a * np.sin(b * x + c)
-    return a * np.sin(b * x)
-
 def resize(array, samples):
     array = array[:-(len(array) % samples)]
     return sum([array[n::samples] for n in range(0, samples)]) / samples
@@ -96,6 +90,11 @@ def analyze_chunk(chunk_num, data, acc):
 
     return key_to_freq(best_key), best_key, best_freq, chunk_volume, chunk_data, acc, freqs, power, power_harmonics, best_freq_indx
 
+def compute_waves(chunk_num, f, p, acc):
+    length = 2 * np.pi * f * chunk_length_secs
+    x = np.linspace(acc, acc + length, chunk_size)
+    acc += length
+    return np.sin(x) * p, acc
 
 #myenvelope = ob.envelope(myrecording[:,0])
 #myenvelope = (sp.hilbert(myrecording[:850,0]))
@@ -110,11 +109,32 @@ accum = 0
 chunk_powers = []
 chunk_freqs = []
 #num_chunks = 10
-for chunk in range(0, num_chunks - (window_size // chunk_size) - 1):
+limit = num_chunks - (window_size // chunk_size) - 1
+for chunk in range(0, limit):
     output_freq, output_key, measured_freq, measured_volume, output_sin, accum, freqs, powers, power_harmonics, best_freq_indx = analyze_chunk(chunk, myrecording, accum)
-    output_data[chunk * chunk_size:(chunk + 1) * chunk_size] = output_sin
+    #output_data[chunk * chunk_size:(chunk + 1) * chunk_size] = output_sin
     print(chunk, output_key, measured_volume, output_freq)
     chunk_freqs.append(output_freq)
+    chunk_powers.append(measured_volume)
+
+#31
+chunk_freqs = sp.medfilt(chunk_freqs,25)
+
+#x = np.linspace(0, length, chunk_size)
+accum = 0
+for chunk in range(0, limit):
+    frequency = chunk_freqs[chunk]
+    amplitude = chunk_powers[chunk]
+    sin_data, accum = compute_waves(chunk, frequency, amplitude, accum) 
+    output_data[chunk * chunk_size:(chunk + 1) * chunk_size] = sin_data
+#output_data[0, (limit+1)*chunk_size] = 
+
+
+
+
+
+
+
 
 print("Sample Rate: " + str(fs) + " Hz")
 wavio.write("beautifulmusic.wav", output_data, fs, sampwidth=2)
@@ -124,7 +144,7 @@ wavio.write("beautifulmusic.wav", output_data, fs, sampwidth=2)
 
 
 #872
-start_chunk = 161
+start_chunk = 160
 #chunks_shown = 8
 chunks_shown = 0
 chunk = start_chunk
@@ -168,6 +188,8 @@ print(str(freqs[1]-freqs[0]))
 plt.subplot(616)
 #plt.xscale("log")
 #plt.plot(freqs[:], powers[:fs//2])
+
+
 plt.plot(chunk_freqs)
 #plt.plot(power_harmonics)
 plt.axvline(x=(start_chunk+0.5), color = 'B', linewidth=0.4)
