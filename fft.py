@@ -9,11 +9,10 @@ from scipy.io.wavfile import write
 import matplotlib
 matplotlib.use('WebAgg')
 import matplotlib.pyplot as plt
-#matplotlib inline
 
+#matplotlib inline
 import scipy.signal as sp
-from scipy import optimize, interpolate
-import obspy.signal.filter as ob
+import scipy.ndimage.filters as fil
 
 def freq_to_key(freq):
     return round(12*np.log2(freq/440)+49)
@@ -34,172 +33,195 @@ def squish(squish_this, num_squishes):
 myrecording = wavio.read(sys.argv[1])
 
 fs = myrecording.rate  # 44100 samples per second
-    # seconds = 5  # Note duration of 3 seconds
-# chunk_size = 850
-chunk_size = 512 #850
-chunk_length_secs = chunk_size / fs
-window_size = 8000 #4000 
 
-low_key = 20
-high_key = 100
+if len(sys.argv) >= 3:
+    start_chunk = int(sys.argv[2])
+else:
+    start_chunk = 50
+
+CHUNK_SIZE = 256
+chunk_length_secs = CHUNK_SIZE / fs
+WINDOW_SIZE = 20024 #4000 
+
+LOW_KEY = 20
+HIGH_KEY = 100
 
 scan_key = 1;
 
-myrecording = myrecording.data
+myrecording = [item[0] for item in myrecording.data]
+myrecording = np.array(myrecording)
 
+
+idx_upper_bound = int(WINDOW_SIZE*key_to_freq(HIGH_KEY)/fs)
+idx_lower_bound = int(WINDOW_SIZE*key_to_freq(LOW_KEY)/fs)
 
 def analyze_chunk(chunk_num, data, acc):
-    wavdata = data[chunk_num*chunk_size:chunk_num*chunk_size + window_size, 0]
-    windowed_data = np.hamming(len(wavdata)) * wavdata
+    wavdata = data[chunk_num*CHUNK_SIZE:chunk_num*CHUNK_SIZE + WINDOW_SIZE]
+    windowed_data = sp.windows.general_gaussian(len(wavdata), p=1, sig=WINDOW_SIZE) * wavdata
 
     power = np.abs(np.fft.rfft(windowed_data))
+    freq_peaks = []
     power_harmonics = squish(power, 5)
     freqs = np.fft.rfftfreq(wavdata.size, d=1/fs)
     
-    idx_upper_bound = int(len(wavdata)*key_to_freq(high_key)/fs)
-    max_power = np.max(power_harmonics[:idx_upper_bound])
-    max_power2 = np.max(wavdata[:])
-    best_freq_indx = np.argmax(power_harmonics[:idx_upper_bound])
-    best_freq = freqs[best_freq_indx]
-    if (int(round(best_freq)) != 0):
-        best_key = freq_to_key(best_freq)
-    else:
-        best_key = 5
-    length = 2 * np.pi * key_to_freq(best_key) * chunk_length_secs
-    x = np.linspace(acc, acc + length, chunk_size)
-    acc += length
-    #x_data = np.linspace(chunk_num*chunk_size,(chunk_num+1)*chunk_size,chunk_size)
-    #y_data = myrecording[chunk_num*chunk_size:(chunk_num+1)*chunk_size,0]
-    #print(y_data)
-    #params, params_covariance = optimize.curve_fit(test_func, x_data, y_data,bounds=((0, 0,0),(100000,0.05, 2*np.pi) ) ,maxfev=1000)
-    
-    #if (int(round(best_freq)) != 0):
-        #print(1/best_freq)
-        #params, params_covariance = optimize.curve_fit(test_func, x_data, y_data,bounds=((0, 0),(10000,0.1) ),p0=[0,1/best_freq], maxfev = 6000)
-        #params, params_covariance = optimize.curve_fit(test_func, x_data, y_data,bounds=((0, 0,0),(100000,0.1, 2*np.pi) ),p0=[60,1/best_freq,np.pi], maxfev = 6000)
-        #print(max_power2)
-        #print(params[0],params[1])
-        #chunk_volume = params[0];
-        #chunk_volume
-    #else:
-        #chunk_volume = 0
+    power_harmonics[:idx_lower_bound] *= 0
+    power_harmonics[idx_upper_bound:] *= 0
 
+    freq_peaks = sp.find_peaks(power_harmonics[idx_lower_bound:idx_upper_bound], distance=3, height=500000)
+    bin_width = abs(freqs[1]-freqs[0])
+
+    new_peak_frequencies = []
+    new_peak_magnitudes = []
+    new_bins = []
+    for peak in freq_peaks[0]:
+        a = power_harmonics[peak+idx_lower_bound-1]
+        b = power_harmonics[peak+idx_lower_bound]
+        c = power_harmonics[peak+idx_lower_bound+1]
+        bin_offset = 0.5*(a-b)/(a-2*b+c)
+        new_peak = b-0.25*(a-c)*bin_offset
+        new_freq = freqs[peak+idx_lower_bound]+bin_width*bin_offset
+        new_peak_frequencies.append(new_freq)
+        new_peak_magnitudes.append(new_peak)
+        new_bins.append(bin_offset+peak)
+
+    best_freq = new_peak_frequencies[np.argmax(new_peak_magnitudes)]
+    old_best_freq_idx = np.argmax(power_harmonics[:idx_upper_bound])
+    old_best_key = freq_to_key(freqs[old_best_freq_idx])
+
+    half = CHUNK_SIZE//2
+    middle = len(wavdata)//2
+    max_power2 = np.max(wavdata[middle-half:middle+half])
+    best_freq_indx = np.argmax(power_harmonics[:idx_upper_bound])
+    best_key=freq_to_key(best_freq)
+
+    if not (best_key == old_best_key):
+        if (old_best_key > best_key):
+            print(old_best_key, best_key, chunk_num, "Moved Down!")
+        else:
+            print(old_best_key, best_key, chunk_num, "Moved Up!")
+            # don't trust the new results when the peak goes up
+            best_key = old_best_key
+                
+    length = 2 * np.pi * key_to_freq(best_key) * chunk_length_secs
+    x = np.linspace(acc, acc + length, CHUNK_SIZE)
+    acc += length
     chunk_volume = max_power2
     chunk_data = chunk_volume * np.sin(x)
-    #chunk_powers.append(chunk_power)
 
-    return key_to_freq(best_key), best_key, best_freq, chunk_volume, chunk_data, acc, freqs, power, power_harmonics, best_freq_indx
+    return key_to_freq(best_key), best_key, best_freq, chunk_volume, chunk_data, acc, freqs, power, power_harmonics, best_freq_indx, freq_peaks
 
-def compute_waves(chunk_num, f, p, acc):
+def compute_waves(chunk_num, f, p_l, p_c, p_n, acc):
+    shared_last = (p_c/2 + p_l/2)
+    shared_next = (p_n/2 + p_c/2)
+
+    p = np.linspace(shared_last, shared_next,CHUNK_SIZE)
     length = 2 * np.pi * f * chunk_length_secs
-    x = np.linspace(acc, acc + length, chunk_size)
+    x = np.linspace(acc, acc + length, CHUNK_SIZE)
     acc += length
-    return np.sin(x) * p, acc
+    return np.sin(x)*p, acc
 
-#myenvelope = ob.envelope(myrecording[:,0])
-#myenvelope = (sp.hilbert(myrecording[:850,0]))
-# myrecording = sd.rec(seconds * fs, samplerate=fs, channels=1)
-#sd.wait()  # Wait until recording is finished
+num_chunks = len(myrecording) // CHUNK_SIZE
 
-num_chunks = len(myrecording) // chunk_size
-
-output_data = np.zeros(num_chunks * chunk_size)
+output_data = np.zeros(num_chunks * CHUNK_SIZE)
 
 accum = 0
 chunk_powers = []
 chunk_freqs = []
-#num_chunks = 10
-limit = num_chunks - (window_size // chunk_size) - 1
+pwr_harmonics = []
+limit = num_chunks - (WINDOW_SIZE // CHUNK_SIZE) - 1
 for chunk in range(0, limit):
-    output_freq, output_key, measured_freq, measured_volume, output_sin, accum, freqs, powers, power_harmonics, best_freq_indx = analyze_chunk(chunk, myrecording, accum)
-    #output_data[chunk * chunk_size:(chunk + 1) * chunk_size] = output_sin
-    print(chunk, output_key, measured_volume, output_freq)
+    output_freq, output_key, measured_freq, measured_volume, output_sin, accum, freqs, powers, power_harmonics, best_freq_indx, peaks = analyze_chunk(chunk, myrecording, accum)
+    pwr_harmonics.append(power_harmonics) 
     chunk_freqs.append(output_freq)
-    chunk_powers.append(measured_volume)
+    chunk_powers.append(abs(measured_volume))
 
-#31
-chunk_freqs = sp.medfilt(chunk_freqs,25)
+old_chunk_freqs = np.copy(chunk_freqs)
+chunk_freqs = sp.medfilt(chunk_freqs,(fs//WINDOW_SIZE)*30+1)
 
-#x = np.linspace(0, length, chunk_size)
 accum = 0
 for chunk in range(0, limit):
     frequency = chunk_freqs[chunk]
-    amplitude = chunk_powers[chunk]
-    sin_data, accum = compute_waves(chunk, frequency, amplitude, accum) 
-    output_data[chunk * chunk_size:(chunk + 1) * chunk_size] = sin_data
-#output_data[0, (limit+1)*chunk_size] = 
+    next_power = 0
+    last_power = 0
 
+    current_power = chunk_powers[chunk]
+    if (chunk + 1 < limit):
+        next_power = chunk_powers[chunk+1]
+    if (chunk - 1 >= 0):
+        last_power = chunk_powers[chunk-1]
+    sin_data, accum = compute_waves(chunk, frequency, last_power, current_power, next_power, accum) 
 
-
-
-
-
+    output_data[chunk * CHUNK_SIZE:(chunk + 1) * CHUNK_SIZE] = sin_data
 
 
 print("Sample Rate: " + str(fs) + " Hz")
 wavio.write("beautifulmusic.wav", output_data, fs, sampwidth=2)
 
-
-#must work for 100Hz to 5kHz
-
-
-#872
-start_chunk = 160
-#chunks_shown = 8
 chunks_shown = 0
 chunk = start_chunk
 
-
-output_freq, output_key, measured_freq, measured_volume, output_sin, accum, freqs, powers, power_harmoncs, best_freq_indx = analyze_chunk(chunk, myrecording, accum)
-#wavdata = myrecording[chunk * chunk_size:chunk*chunk_size + window_size, 0]
+output_freq, output_key, measured_freq, measured_volume, output_sin, accum, freqs, powers, power_harmonics, best_freq_indx, peaks = analyze_chunk(chunk, myrecording, accum)
 
 print("Detected freq = " + str(measured_freq))
 print(chunk, output_key, measured_volume, output_freq)
 
 
-plt.figure(1,figsize=[8,8])
-plt.subplot(613)
+fig = plt.figure(1,figsize=[8,8.9])
+plt.subplots_adjust(left=0.1, right=0.9,top=1, bottom=0.05)
+plt.subplot(711)
+plt.plot(output_data[:])
+plt.axvline(x=(start_chunk+0.5)*CHUNK_SIZE, color = 'b')
+
+print("shape = " + str(myrecording.shape))
+print("Space between frequency bins: " + str(freqs[1]-freqs[0]) + " Hz")
+
+plt.subplot(712)
+plt.yscale("log")
+for note in range(16, 108, 12):
+    plt.hlines(y=key_to_freq(note), color = 'black', linewidth=0.5, xmin = 0, xmax=num_chunks)
+plt.hlines(y=key_to_freq(LOW_KEY), color = 'r', linewidth=0.5, xmin = 0, xmax=num_chunks)
+plt.hlines(y=key_to_freq(HIGH_KEY), color = 'r', linewidth=0.5, xmin = 0, xmax=num_chunks)
+plt.axvline(x=(start_chunk+0.5), color = 'b', linewidth=0.4)
+plt.plot(chunk_freqs)
+
+plt.subplot(713)
+plt.yscale("log")
+for note in range(16, 108, 12):
+    plt.hlines(y=key_to_freq(note), color = 'black', linewidth=0.5, xmin = 0, xmax=num_chunks)
+plt.hlines(y=key_to_freq(LOW_KEY), color = 'r', linewidth=0.5, xmin = 0, xmax=num_chunks)
+plt.hlines(y=key_to_freq(HIGH_KEY), color = 'r', linewidth=0.5, xmin = 0, xmax=num_chunks)
+plt.axvline(x=(start_chunk+0.5), color = 'b', linewidth=0.4)
+plt.plot(old_chunk_freqs)
+
+plt.subplot(715)
 plt.xscale("log")
 plt.plot(freqs[:], powers[:fs//2])
 plt.axvline(x=freqs[best_freq_indx], color = 'r')
 
-plt.axvline(x=key_to_freq(output_key-1), color = 'b', linewidth=0.5)
-for note in range(low_key, high_key):
-    plt.axvline(x=key_to_freq(note), color = 'b', linewidth=0.5)
+for note in range(16, 108, 12):
+    plt.axvline(x=key_to_freq(note), color = 'black', linewidth=0.5)
 
-plt.subplot(612)
-plt.plot(output_data[(start_chunk-chunks_shown)*chunk_size:(start_chunk+1+chunks_shown)*chunk_size])
-plt.subplot(614)
-plt.plot(myrecording[start_chunk*chunk_size:(start_chunk)*chunk_size+window_size])
-#plt.plot(wavdata[:])
-#plt.plot(myrecording[:850,0])
-plt.subplot(615)
-plt.plot(myrecording[:,0])
-#plt.plot(myenvelope[:850])
-#plt.plot(x_data, test_func(x_data, params[0], params[1], params[2]),label='Fitted function')
-plt.axvline(x=(start_chunk+0.5)*chunk_size, color = 'B')
-plt.subplot(611)
-plt.plot(output_data[:])
-plt.axvline(x=(start_chunk+0.5)*chunk_size, color = 'B')
-
-print("shape = " + str(myrecording[:,0].shape))
-print(str(freqs[1]-freqs[0]))
-
-plt.subplot(616)
-#plt.xscale("log")
-#plt.plot(freqs[:], powers[:fs//2])
+plt.axvline(x=key_to_freq(LOW_KEY), color = 'r', linewidth=0.5)
+plt.axvline(x=key_to_freq(HIGH_KEY), color = 'r', linewidth=0.5)
 
 
-plt.plot(chunk_freqs)
-#plt.plot(power_harmonics)
-plt.axvline(x=(start_chunk+0.5), color = 'B', linewidth=0.4)
+plt.subplot(714)
+plt.xscale("log")
+plt.xlim([key_to_freq(LOW_KEY), key_to_freq(HIGH_KEY)])
+plt.plot(freqs[:], power_harmonics)
+for note in range(16, 108, 12):
+    plt.axvline(x=key_to_freq(note), color = 'black', linewidth=0.5)
+for peak in peaks[0]:
+    plt.axvline(x=freqs[peak+idx_lower_bound], color = 'green', linewidth=1, linestyle='--')
+print(peaks[0])
 
+plt.axvline(x=key_to_freq(LOW_KEY), color = 'r', linewidth=0.5)
+plt.axvline(x=key_to_freq(HIGH_KEY), color = 'r', linewidth=0.5)
+plt.axvline(x=freqs[best_freq_indx], color = 'r')
+
+plt.subplot(716)
+plt.plot(myrecording[start_chunk*CHUNK_SIZE:(start_chunk)*CHUNK_SIZE+WINDOW_SIZE])
+plt.subplot(717)
+plt.plot(myrecording)
+plt.axvline(x=(start_chunk+0.5)*CHUNK_SIZE, color = 'Blue')
 plt.show()
-# plt.figure(1)
-# plt.subplot(211)
-# plt.xscale("log")
-# #plt.plot(freq[:], power[:22051])
-# plt.plot(freq, power)
-# plt.subplot(212)
-# plt.plot(chunk_data)
-#plt.ylabel('some numbers')
