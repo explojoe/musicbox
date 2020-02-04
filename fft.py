@@ -180,7 +180,7 @@ print(chunk, output_key, measured_volume, output_freq)
 
 fig = plt.figure(1, figsize=[8, 8.9])
 plt.subplots_adjust(left=0.1, right=0.9, top=1, bottom=0.05)
-plt.subplot(711)
+plt.subplot(717)
 plt.plot(output_data[:])
 plt.axvline(x=(start_chunk + 0.5) * CHUNK_SIZE, color='b')
 

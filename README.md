@@ -9,10 +9,9 @@ python fft.py <input_file.wav> <analysis_chunk_number>
 Will process `input_file.wav` and create/overwrite `output.wav`. `analysis_chunk_number` can be passed to specify a particular chunk to analyze the frequency spectrum of. 
 
 ### Example
-
 Here is an example output of the program.
 
-![Example Output](https://i.imgur.com/cT2A95M.png)
+![Example Output](https://i.imgur.com/P6N9Kq3.png)
 
 From top to bottom there are 6 charts:
 1. Input waveform.
