@@ -197,13 +197,7 @@ for note in range(16, 108, 12):
         xmin=0,
         xmax=num_chunks)
 plt.hlines(
-    y=key_to_freq(LOW_KEY),
-    color='r',
-    linewidth=0.5,
-    xmin=0,
-    xmax=num_chunks)
-plt.hlines(
-    y=key_to_freq(HIGH_KEY),
+    y=[key_to_freq(LOW_KEY),key_to_freq(HIGH_KEY)],
     color='r',
     linewidth=0.5,
     xmin=0,
@@ -221,13 +215,7 @@ for note in range(16, 108, 12):
         xmin=0,
         xmax=num_chunks)
 plt.hlines(
-    y=key_to_freq(LOW_KEY),
-    color='r',
-    linewidth=0.5,
-    xmin=0,
-    xmax=num_chunks)
-plt.hlines(
-    y=key_to_freq(HIGH_KEY),
+    y=[key_to_freq(LOW_KEY),key_to_freq(HIGH_KEY)],
     color='r',
     linewidth=0.5,
     xmin=0,
