@@ -11,7 +11,7 @@ Will process `input_file.wav` and create/overwrite `output.wav`. `analysis_chunk
 ### Example
 Here is an example output of the program.
 
-![Example Output](https://i.imgur.com/cT2A95M.png)
+![Example Output](https://i.imgur.com/P6N9Kq3.png)
 
 From top to bottom there are 6 charts:
 1. Input waveform.
