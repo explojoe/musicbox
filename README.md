@@ -49,7 +49,7 @@ From top to bottom there are 6 charts:
 **Joshua Wentzel** - [explojoe](https://github.com/explojoe)
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
+This project is licensed under the GPL3 License - see the [LICENSE.md](LICENSE.md) file for details
 
 ## Acknowledgments
 
