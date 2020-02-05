@@ -1,4 +1,6 @@
-    This program converts audio files to a piano tone locked version
+    This program was written to converts audio files to a piano tone 
+    locked version. This was part of a Oregon State University
+    Junior Design Final Project for 2019-2020
     Copyright (C) 2020  Joshua Wentzel
 
     This program is free software: you can redistribute it and/or modify
