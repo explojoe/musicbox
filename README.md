@@ -1,6 +1,10 @@
 # Music Box
 This project is centered around fft.py, a program that analyzes audio for piano tones and then outputs a piano tone locked version of the input.
 
+Implemented on DE1-SoC ARM Cortex-A9 / Cyclone V FPGA board. Enclosed in custom 3D printed enclosure.
+
+![Music Box](https://i.imgur.com/sQSnHPn.jpeg)
+
 ## Running
 
 ```
